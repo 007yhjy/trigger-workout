@@ -65,6 +65,12 @@ header h1 span{color:var(--accent)}
 .fld input{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 34px 10px 10px;font-weight:700;text-align:right}
 .fld input::placeholder{color:#556070;font-weight:500}
 .fld input:focus{outline:none;border-color:var(--accent)}
+.fld input.need{border-color:var(--danger)!important}
+.row.cur .sl{background:var(--accent);color:#fff}
+.go{padding:6px 10px;font-size:12.5px;margin-left:8px;white-space:nowrap}
+.go.on{background:var(--danger);border-color:var(--danger);color:#fff}
+.exh .r{display:flex;align-items:center}
+#tnext{display:none;background:var(--up)!important;color:#06281a!important;border-color:var(--up)!important}
 .fld span{position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted)}
 .chk{height:42px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font-size:18px;font-weight:900}
 .chk.done{background:var(--up);border-color:var(--up);color:#06281a}
@@ -125,6 +131,7 @@ svg.spark{width:100%;height:120px;display:block;margin:6px 0 10px}
       <button data-t="-15">-15</button>
       <button data-t="+15">+15</button>
       <button data-t="pause" id="tpause">⏸</button>
+      <button data-t="next" id="tnext">다음 운동 ▶</button>
       <button data-t="skip">✕</button>
     </div>
   </div>
@@ -344,8 +351,8 @@ function renderWork(){
     <input type="date" id="sdate" value="${sess?.date||today()}"></div>
   </div>`;
   day.blocks.forEach((b,bi)=>{
-    h+=`<div class="block"><div class="bt">휴식 ${b.rest}초 · 목표 ${b.target}개 <small>· 블록 ${bi+1}</small></div>
-      <button class="btn" data-start="${b.rest}" data-lbl="휴식 ${b.rest}초">▶ ${b.rest}초</button></div>`;
+    h+=`<div class="block"><div class="bt">세트 간격 ${b.rest}초 · 목표 ${b.target}개 <small>· 블록 ${bi+1}</small></div>
+      </div>`;
     b.ex.forEach((ex,ei)=>{ h+=cardHTML(ex,b,idx,sess,`${bi}_${ei}`); });
   });
   h+=`<div class="finish">
@@ -359,7 +366,7 @@ function cardHTML(ex,b,idx,sess,cid){
   const cur=sess?.ex?.[k]?.sets||[];
   const prevSets=rec.prev?.rec?.sets||[];
   let h=`<div class="card" data-cid="${cid}" data-k="${k}">
-    <div class="exh"><b>${esc(ex.name)}</b><span class="muted">${ex.sets}세트 · 목표 ${b.target}개</span></div>
+    <div class="exh"><b>${esc(ex.name)}</b><span class="r"><span class="muted">${ex.sets}세트 · 목표 ${b.target}개</span><button class="btn go ${chainOn(cid)?'on':''}" data-go="${cid}">${chainOn(cid)?'⏹ 정지':`▶ 시작 ${b.rest}초×${ex.sets}`}</button></span></div>
     <div class="rec ${rec.type}">${rec.type==='new'?'🔎':rec.type==='up'?'⬆':rec.type==='phase'?'🔄':'➡'} 1세트 추천 <b>${rec.title}</b><small>${rec.msg}</small></div>`;
   const base1 = (+cur[0]?.w>0) ? +cur[0].w : rec.w1;
   for(let s=0;s<ex.sets;s++){
@@ -368,10 +375,10 @@ function cardHTML(ex,b,idx,sess,cid){
     const pr = s===0 ? rec.r1 : (pv?.r ? (+pv.r+1) : '최대');
     const prevTxt = pv && pv.r ? `지난번 ${fmt(+pv.w||0)}${u}×${pv.r}` : '';
     const goalTxt = s===0 ? '' : `추천 ${pw?pw+u:'-'} · 최대 횟수${pv?.r?` (${+pv.r+1}개+ 목표)`:''}`;
-    h+=`<div class="row ${c.done?'done':''}" data-s="${s}">
+    h+=`<div class="row ${c.done?'done':''} ${chainOn(cid)&&C.s===s?'cur':''}" data-s="${s}">
       <div class="sl">${s+1}</div>
       <div class="fld"><input inputmode="decimal" data-f="w" value="${c.w??''}" placeholder="${pw}"><span>${u}</span></div>
-      <div class="fld"><input inputmode="numeric" data-f="r" value="${c.r??''}" placeholder="${pr}"><span>개</span></div>
+      <div class="fld"><input inputmode="numeric" data-f="r" class="${c.done&&!(c.r>0)?'need':''}" value="${c.r??''}" placeholder="${pr}"><span>개</span></div>
       <button class="chk ${c.done?'done':''}" data-chk="1" data-rest="${b.rest}">✓</button>
       ${(prevTxt||goalTxt)?`<div class="prev">${[prevTxt,goalTxt].filter(Boolean).join(' · ')}</div>`:''}
     </div>`;
@@ -424,7 +431,7 @@ function renderRules(){
   <div class="note"><b>➡ 유지</b> 목표 미달이면 같은 무게로 지난번 +1개를 목표로 합니다.</div>
   <div class="note"><b>🔄 주기 변경</b> 새 주기에서 목표 횟수가 바뀌면(예: 6→8개) 직전 기록을 추정 1RM(Epley 공식)으로 환산해 시작 무게를 제안합니다.</div>
   <div class="note"><b>2·3세트</b> 1세트 무게에서 세트마다 ${S.settings.drop}%씩 감량한 무게를 추천하고, 지난번 같은 세트 횟수 +1개를 목표로 보여줍니다. 오늘 1세트 무게를 입력하면 바로 다시 계산돼요.</div>
-  <div class="note"><b>⏱ 타이머</b> 세트 ✓를 누르면 해당 블록의 휴식 시간 타이머가 자동 시작됩니다. 10초 전 알림음, 종료 시 알림음과 진동이 울려요.</div>`;
+  <div class="note"><b>⏱ 세트 타이머</b> 운동 카드의 ▶ 시작을 누르면 1세트 타이머(세트+휴식)가 시작돼요. 시간이 끝나면 그 세트가 자동으로 ✓ 되고 다음 세트 타이머가 바로 이어져요. 마지막 세트가 끝나면 다음 운동 버튼이 나타나요. 10초 전 알림음, 세트 전환 시 알림음이 울려요.</div>`;
 }
 function renderSet(){
   const st=S.settings;
@@ -475,36 +482,94 @@ function beep(freq=880,dur=.18,times=1,gap=.12){
   if(!S.settings.sound||!AC) return;
   try{ for(let i=0;i<times;i++){ const t=AC.currentTime+i*(dur+gap); const o=AC.createOscillator(), g=AC.createGain(); o.frequency.value=freq; o.type='sine'; g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(.45,t+.02); g.gain.exponentialRampToValueAtTime(.0001,t+dur); o.connect(g).connect(AC.destination); o.start(t); o.stop(t+dur+.02);} }catch(e){}
 }
+/* 세트 연속 타이머: C = {cid,k,sk,s,n,sec,name} — 세트 시간이 끝나면 자동 ✓ 후 다음 세트 타이머 즉시 시작 */
+let C=null, NEXT_CID=null, PENDING_RENDER=false;
+function safeRenderWork(){ // 입력 중이면 입력칸에서 벗어날 때 다시 그림 (키보드가 닫히지 않도록)
+  const a=document.activeElement;
+  if(a && a.tagName==='INPUT' && $('#view').contains(a)){ PENDING_RENDER=true; const card=a.closest('.card'); if(card&&C&&card.dataset.cid===C.cid){ card.querySelectorAll('.row').forEach(r=>{ const i=+r.dataset.s; r.classList.toggle('cur',i===C.s); if(i<C.s){ r.classList.add('done'); r.querySelector('.chk').classList.add('done'); } }); } return; }
+  PENDING_RENDER=false; renderWork();
+}
+document.addEventListener('focusout',()=>setTimeout(()=>{ if(PENDING_RENDER && VIEW==='work'){ const a=document.activeElement; if(!(a&&a.tagName==='INPUT')){ PENDING_RENDER=false; renderWork(); } } },50));
+const chainOn = cid => !!(C && C.cid===cid && C.sk===sKey(S.settings.cur.p,S.settings.cur.w,S.settings.cur.d));
+const chainLabel = () => `${C.name} · ${C.s+1}/${C.n}세트`;
+function persistTimer(){ try{ localStorage.setItem(LS+'_t',JSON.stringify({end:T.end,total:T.total,label:T.label,chain:C})); }catch(e){} }
 function startTimer(sec,label){
   unlockAudio();
   Object.assign(T,{total:sec,end:Date.now()+sec*1000,paused:false,label,active:true,warned:sec<=10,ended:false});
-  try{ localStorage.setItem(LS+'_t',JSON.stringify({end:T.end,total:T.total,label})); }catch(e){}
-  $('#timer').style.display='block'; $('#timer').classList.remove('end'); $('#tpause').textContent='⏸';
+  persistTimer();
+  $('#timer').style.display='block'; $('#timer').classList.remove('end'); $('#tpause').textContent='⏸'; $('#tnext').style.display='none';
   tick();
 }
-function stopTimer(){ T.active=false; $('#timer').style.display='none'; try{ localStorage.removeItem(LS+'_t'); }catch(e){} }
+function stopTimer(){ T.active=false; const had=!!C; C=null; NEXT_CID=null; $('#timer').style.display='none'; try{ localStorage.removeItem(LS+'_t'); }catch(e){} if(had && VIEW==='work') renderWork(); }
+function dayCids(){ const {p,d}=S.settings.cur, out=[]; PH[p].days[d].blocks.forEach((b,bi)=>b.ex.forEach((ex,ei)=>out.push(`${bi}_${ei}`))); return out; }
+function firstOpenSet(cid){ const {ex}=findEx(cid), k=exKey(ex.name), sets=curSession(false)?.ex?.[k]?.sets||[]; for(let i=0;i<ex.sets;i++) if(!sets[i]?.done) return i; return 0; }
+function startChain(cid, from){
+  const {b,ex}=findEx(cid), c=S.settings.cur;
+  C={cid, k:exKey(ex.name), sk:sKey(c.p,c.w,c.d), s:from, n:ex.sets, sec:b.rest, name:ex.name};
+  NEXT_CID=null;
+  startTimer(b.rest, chainLabel());
+  if(VIEW==='work') renderWork();
+  watchTimer(b.rest);
+}
+function markSetDone(s){ // 현재 세트 자동 체크 (빈 무게는 추천값으로 채움)
+  const sess=S.sessions[C.sk] || (S.sessions[C.sk]={ex:{},date:today(),done:false});
+  const rec = sess.ex[C.k] = sess.ex[C.k] || {name:C.name, sets:[]};
+  const {b}=findExIn(C.sk, C.cid); rec.target=b.target; rec.name=C.name;
+  while(rec.sets.length<=s) rec.sets.push({});
+  const card=document.querySelector(`.card[data-cid="${C.cid}"]`), row=card && chainOn(C.cid) ? card.querySelector(`.row[data-s="${s}"]`) : null;
+  if(row){ const wI=row.querySelector('[data-f=w]'), rI=row.querySelector('[data-f=r]');
+    if(wI.value===''&&wI.placeholder!==''&&!isNaN(+wI.placeholder)){ wI.value=wI.placeholder; rec.sets[s].w=+wI.placeholder; }
+    if(rI.value!=='') rec.sets[s].r=+rI.value; }
+  rec.sets[s].done=true; sess.updatedAt=Date.now(); if(!sess.startedAt) sess.startedAt=Date.now();
+  queueRemote('s_'+C.sk);
+}
+function findExIn(sk,cid){ const [p,w,d]=sk.split('-').map(Number), [bi,ei]=cid.split('_').map(Number), b=PH[p].days[d].blocks[bi]; return {b, ex:b.ex[ei]}; }
+function advanceChain(manual){ // 현재 세트 완료 → 다음 세트 시작 또는 운동 종료
+  markSetDone(C.s);
+  const missingReps = !(S.sessions[C.sk].ex[C.k].sets[C.s].r>0);
+  C.s++;
+  if(C.s<C.n){
+    if(manual){ T.end=Date.now()+C.sec*1000; } else { T.end += C.sec*1000; }
+    T.total=C.sec; T.warned=false; T.ended=false; T.label=chainLabel(); persistTimer();
+    beep(988,.22,2); try{navigator.vibrate&&navigator.vibrate([250,120,250]);}catch(e){}
+    if(missingReps) toast('방금 세트 횟수를 입력해 주세요');
+    return true;
+  }
+  // 마지막 세트 끝
+  const cids=dayCids(), i=cids.indexOf(C.cid); NEXT_CID = C.sk===sKey(S.settings.cur.p,S.settings.cur.w,S.settings.cur.d) ? (cids[i+1]||null) : null;
+  T.ended=true; T.label=`${C.name} 완료!`; C=null; persistTimer();
+  $('#timer').classList.add('end'); beep(988,.22,3); try{navigator.vibrate&&navigator.vibrate([300,150,300,150,300]);}catch(e){}
+  if(NEXT_CID){ const {ex}=findEx(NEXT_CID); $('#tnext').style.display='inline-block'; $('#tnext').textContent=`${ex.name} ▶`; }
+  return false;
+}
 function tick(){
   if(!T.active) return;
+  // 화면이 꺼져 있던 동안 지난 세트까지 한꺼번에 처리
+  let guard=0, changed=false;
+  while(C && !T.paused && Date.now()>=T.end && guard++<20){ changed=true; if(!advanceChain(false)) break; }
+  if(changed && VIEW==='work') safeRenderWork();
   const rem = T.paused ? T.remain : Math.max(0,(T.end-Date.now())/1000);
   const r=Math.ceil(rem), m=Math.floor(r/60), s=r%60;
   $('#ttime').textContent = T.ended ? '+'+fmtTime(Math.floor((Date.now()-T.end)/1000)) : `${m}:${String(s).padStart(2,'0')}`;
   $('#tbar').style.width = (T.ended?100:(1-rem/T.total)*100)+'%';
-  $('#tlabel').innerHTML = T.ended ? `<b>휴식 끝! 다음 세트 시작</b><br>${esc(T.label)}` : `<b>${esc(T.label)}</b><br>${T.paused?'일시정지':'휴식 중'}`;
+  const sub = C ? (C.s===C.n-1 ? '마지막 세트 · 끝나면 자동 ✓' : '세트+휴식 · 끝나면 자동 ✓ 후 다음 세트') : '휴식 중';
+  $('#tlabel').innerHTML = T.ended ? (C===null&&T.label.endsWith('완료!') ? `<b>${esc(T.label)}</b><br>${NEXT_CID?'다음 운동을 시작하세요':'오늘 운동 끝! 운동 완료를 눌러 주세요'}` : `<b>휴식 끝! 다음 세트 시작</b><br>${esc(T.label)}`) : `<b>${esc(T.label)}</b><br>${T.paused?'일시정지':sub}`;
   if(!T.paused && !T.warned && rem<=10 && rem>0){ T.warned=true; beep(660,.12,1); }
-  if(!T.paused && !T.ended && rem<=0){ T.ended=true; $('#timer').classList.add('end'); beep(988,.22,3); try{navigator.vibrate&&navigator.vibrate([300,150,300,150,300]);}catch(e){} }
+  if(!C && !T.paused && !T.ended && rem<=0){ T.ended=true; $('#timer').classList.add('end'); beep(988,.22,3); try{navigator.vibrate&&navigator.vibrate([300,150,300,150,300]);}catch(e){} }
 }
 const fmtTime = x => Math.floor(x/60)+':'+String(x%60).padStart(2,'0');
 setInterval(tick,250);
 document.querySelectorAll('#timer [data-t]').forEach(b=>b.addEventListener('click',()=>{
   unlockAudio(); const a=b.dataset.t;
   if(a==='skip') return stopTimer();
-  if(a==='pause'){ if(T.ended) return stopTimer(); if(T.paused){ T.end=Date.now()+T.remain*1000; T.paused=false; b.textContent='⏸'; } else { T.remain=Math.max(0,(T.end-Date.now())/1000); T.paused=true; b.textContent='▶'; } return tick(); }
+  if(a==='next'){ const n=NEXT_CID; if(!n) return; VIEW='work'; render(); startChain(n, firstOpenSet(n)); const el=document.querySelector(`.card[data-cid="${n}"]`); el&&el.scrollIntoView({behavior:'smooth',block:'start'}); return; }
+  if(a==='pause'){ if(T.ended) return stopTimer(); if(T.paused){ T.end=Date.now()+T.remain*1000; T.paused=false; b.textContent='⏸'; } else { T.remain=Math.max(0,(T.end-Date.now())/1000); T.paused=true; b.textContent='▶'; } persistTimer(); return tick(); }
   const delta=+a;
   if(T.ended){ T.ended=false; $('#timer').classList.remove('end'); T.end=Date.now(); }
-  if(T.paused) T.remain=Math.max(0,T.remain+delta); else T.end=Math.max(Date.now(),T.end+delta*1000);
-  T.total=Math.max(T.total+ (delta>0?delta:0), 1); T.warned = (T.end-Date.now())/1000<=10; tick();
+  if(T.paused) T.remain=Math.max(0,T.remain+delta); else T.end=Math.max(Date.now()+1000,T.end+delta*1000);
+  T.total=Math.max(T.total+ (delta>0?delta:0), 1); T.warned = (T.end-Date.now())/1000<=10; persistTimer(); tick();
 }));
-try{ const t=JSON.parse(localStorage.getItem(LS+'_t')||'null'); if(t && t.end>Date.now()-60000){ Object.assign(T,{end:t.end,total:t.total,label:t.label,active:true,warned:true,ended:false}); $('#timer').style.display='block'; } }catch(e){}
+try{ const t=JSON.parse(localStorage.getItem(LS+'_t')||'null'); if(t && (t.chain || t.end>Date.now()-60000)){ Object.assign(T,{end:t.end,total:t.total,label:t.label,active:true,warned:true,ended:false}); C=t.chain||null; $('#timer').style.display='block'; } }catch(e){}
 
 /* ===== 구글 시트 전송 (오프라인 대기열) ===== */
 const OB=LS+'_outbox';
@@ -572,6 +637,7 @@ $('#view').addEventListener('input',e=>{
   const card=t.closest('.card'), row=t.closest('.row'), s=+row.dataset.s;
   const v = t.value==='' ? '' : Number(t.value);
   setVal(card,s,t.dataset.f,v);
+  if(t.dataset.f==='r' && v>0) t.classList.remove('need');
   if(s===0 && t.dataset.f==='w'){ // 오늘 1세트 무게 → 2·3세트 추천 즉시 갱신
     const {ex}=findEx(card.dataset.cid); const base = v>0 ? v : null;
     card.querySelectorAll('.row').forEach(r=>{ const i=+r.dataset.s; if(i===0) return;
@@ -585,17 +651,18 @@ $('#view').addEventListener('click',e=>{
   const c=S.settings.cur;
   if(t.dataset.w!=null) return setCur(c.p,+t.dataset.w,c.d);
   if(t.dataset.d!=null) return setCur(c.p,c.w,+t.dataset.d);
-  if(t.dataset.start){ startTimer(+t.dataset.start, t.dataset.lbl); return watchTimer(+t.dataset.start); }
+  if(t.dataset.go){ const cid=t.dataset.go; if(chainOn(cid)) return stopTimer(); return startChain(cid, firstOpenSet(cid)); }
   if(t.dataset.chk){
     const card=t.closest('.card'), row=t.closest('.row'), s=+row.dataset.s;
     const wI=row.querySelector('[data-f=w]'), rI=row.querySelector('[data-f=r]');
     const sess=curSession(true), cur=sess.ex[card.dataset.k]?.sets?.[s];
     if(cur?.done){ setVal(card,s,'done',false); row.classList.remove('done'); t.classList.remove('done'); return; }
+    if(chainOn(card.dataset.cid) && C.s===s){ advanceChain(true); if(!C){} return renderWork(); }
     if(wI.value==='' && wI.placeholder!=='' && !isNaN(+wI.placeholder)){ wI.value=wI.placeholder; setVal(card,s,'w',+wI.placeholder); }
     if(rI.value===''){ rI.focus(); toast('횟수를 입력해 주세요'); return; }
     setVal(card,s,'done',true); row.classList.add('done'); t.classList.add('done');
     const {ex}=findEx(card.dataset.cid);
-    if(S.settings.autoTimer){
+    if(S.settings.autoTimer && !C){
       const last = s===ex.sets-1;
       startTimer(+t.dataset.rest, last ? `${ex.name} 끝 → 다음 운동` : `${ex.name} ${s+2}세트 준비`);
       watchTimer(+t.dataset.rest);
