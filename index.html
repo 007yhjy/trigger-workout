@@ -246,7 +246,7 @@ const sKey = (p,w,d) => `${p}-${w}-${d}`;
 const keyToIdx = k => { const [p,w,d]=k.split('-').map(Number); return sIdx(p,w,d); };
 
 /* ===== 상태 & 저장 ===== */
-const DEFAULT_SETTINGS = {unit:'lb', incBig:5, incSmall:2.5, drop:7.5, autoTimer:true, sound:true, cur:{p:1,w:0,d:0}, v:2, sheetUrl:'', sheetToken:'', watch:'ios', shortcutName:'운동타이머'};
+const DEFAULT_SETTINGS = {unit:'lb', incBig:5, incSmall:2.5, drop:7.5, autoTimer:true, sound:true, cur:{p:1,w:0,d:0}, v:2, sheetUrl:'', sheetToken:'', watch:'off'};
 const INC_DEFAULT = {kg:{incBig:2.5, incSmall:1}, lb:{incBig:5, incSmall:2.5}};
 let S = {settings:{...DEFAULT_SETTINGS}, sessions:{}};
 const LS='trigger28_v1';
@@ -445,15 +445,10 @@ function renderSet(){
     <label>알림음<select id="sSound"><option value="1" ${st.sound?'selected':''}>켜기</option><option value="0" ${!st.sound?'selected':''}>끄기</option></select></label>
   </div>
   <div class="muted" style="margin:-2px 2px 14px">단위를 바꾸면 지금까지 기록한 무게도 자동 변환되고, 증량 단위가 기본값(lb 5/2.5, kg 2.5/1)으로 재설정돼요.</div>
-  <h2>⌚ 워치 타이머 연동</h2>
-  <div class="card set-grid">
-    <label>방식<select id="sWatch">
-      <option value="off" ${st.watch==='off'?'selected':''}>끄기 (앱 타이머만)</option>
-      <option value="ios" ${st.watch==='ios'?'selected':''}>iPhone + Apple Watch (단축어)</option>
-      <option value="android" ${st.watch==='android'?'selected':''}>Android + Galaxy Watch (시계 앱)</option></select></label>
-    ${st.watch==='ios'?`<label>단축어 이름<input id="sSc" value="${esc(st.shortcutName||'운동타이머')}"></label>`:'<div></div>'}
-    <div style="grid-column:1/3" class="muted">세트 ✓ 또는 ▶를 누르면 휴대폰 기본 시계 앱의 타이머도 함께 시작돼요. 기본 시계 타이머는 끝날 때 워치가 진동해요.</div>
-    ${st.watch!=='off'?'<div style="grid-column:1/3"><button class="btn" id="bWatchTest">10초 테스트</button></div>':''}
+  <h2>🔔 타이머 알림음</h2>
+  <div class="card">
+    <div class="muted" style="margin-bottom:8px">끝나기 10초 전에는 '띵-동' 경고음, 시간이 끝나면 '삐삐삐-' 종료음이 울려요. 무음 모드에서도 들리도록 설정했어요.</div>
+    <div style="display:flex;gap:8px"><button class="btn" id="bSndWarn">🔔 10초 전 소리</button><button class="btn" id="bSndEnd">⏰ 종료 소리</button></div>
   </div>
   <h2>📊 구글 시트 자동 기록</h2>
   <div class="card">
@@ -477,7 +472,26 @@ function renderSet(){
 /* ===== 타이머 ===== */
 const T={end:0,total:0,paused:false,remain:0,label:'',active:false,warned:false,ended:false};
 let AC=null;
-function unlockAudio(){ try{ if(!AC){ AC=new (window.AudioContext||window.webkitAudioContext)(); } if(AC.state==='suspended') AC.resume(); }catch(e){} }
+function unlockAudio(){ try{ if(navigator.audioSession && navigator.audioSession.type!=='playback') navigator.audioSession.type='playback'; }catch(e){} try{ if(!AC){ AC=new (window.AudioContext||window.webkitAudioContext)(); } if(AC.state==='suspended') AC.resume(); }catch(e){} }
+function tone(freq,at,dur,type='sine',vol=.5){
+  const o=AC.createOscillator(), g=AC.createGain(); o.type=type; o.frequency.value=freq;
+  g.gain.setValueAtTime(.0001,at); g.gain.exponentialRampToValueAtTime(vol,at+.015); g.gain.exponentialRampToValueAtTime(.0001,at+dur);
+  o.connect(g).connect(AC.destination); o.start(at); o.stop(at+dur+.03);
+}
+/* 10초 전: 부드러운 두 음 '띵-동' (높은음→낮은음) */
+function soundWarn(){
+  if(!S.settings.sound||!AC) return;
+  try{ if(AC.state==='suspended') AC.resume(); const t=AC.currentTime+.02;
+    tone(1318.5,t,.45,'triangle',.7); tone(987.8,t+.38,.7,'triangle',.7); }catch(e){}
+  try{navigator.vibrate&&navigator.vibrate(200);}catch(e){}
+}
+/* 종료: 날카로운 상승 '삐삐삐-' 를 두 번 반복 */
+function soundEnd(){
+  if(!S.settings.sound||!AC) return;
+  try{ if(AC.state==='suspended') AC.resume(); const t=AC.currentTime+.02;
+    [0,.75].forEach(r=>{ tone(1046.5,t+r,.13,'square',.35); tone(1318.5,t+r+.16,.13,'square',.35); tone(1568,t+r+.32,.32,'square',.4); }); }catch(e){}
+  try{navigator.vibrate&&navigator.vibrate([300,150,300,150,300]);}catch(e){}
+}
 function beep(freq=880,dur=.18,times=1,gap=.12){
   if(!S.settings.sound||!AC) return;
   try{ for(let i=0;i<times;i++){ const t=AC.currentTime+i*(dur+gap); const o=AC.createOscillator(), g=AC.createGain(); o.frequency.value=freq; o.type='sine'; g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(.45,t+.02); g.gain.exponentialRampToValueAtTime(.0001,t+dur); o.connect(g).connect(AC.destination); o.start(t); o.stop(t+dur+.02);} }catch(e){}
@@ -509,7 +523,6 @@ function startChain(cid, from){
   NEXT_CID=null;
   startTimer(b.rest, chainLabel());
   if(VIEW==='work') renderWork();
-  watchTimer(b.rest);
 }
 function markSetDone(s){ // 현재 세트 자동 체크 (빈 무게는 추천값으로 채움)
   const sess=S.sessions[C.sk] || (S.sessions[C.sk]={ex:{},date:today(),done:false});
@@ -531,14 +544,14 @@ function advanceChain(manual){ // 현재 세트 완료 → 다음 세트 시작 
   if(C.s<C.n){
     if(manual){ T.end=Date.now()+C.sec*1000; } else { T.end += C.sec*1000; }
     T.total=C.sec; T.warned=false; T.ended=false; T.label=chainLabel(); persistTimer();
-    beep(988,.22,2); try{navigator.vibrate&&navigator.vibrate([250,120,250]);}catch(e){}
+    soundEnd();
     if(missingReps) toast('방금 세트 횟수를 입력해 주세요');
     return true;
   }
   // 마지막 세트 끝
   const cids=dayCids(), i=cids.indexOf(C.cid); NEXT_CID = C.sk===sKey(S.settings.cur.p,S.settings.cur.w,S.settings.cur.d) ? (cids[i+1]||null) : null;
   T.ended=true; T.label=`${C.name} 완료!`; C=null; persistTimer();
-  $('#timer').classList.add('end'); beep(988,.22,3); try{navigator.vibrate&&navigator.vibrate([300,150,300,150,300]);}catch(e){}
+  $('#timer').classList.add('end'); soundEnd();
   if(NEXT_CID){ const {ex}=findEx(NEXT_CID); $('#tnext').style.display='inline-block'; $('#tnext').textContent=`${ex.name} ▶`; }
   return false;
 }
@@ -554,11 +567,12 @@ function tick(){
   $('#tbar').style.width = (T.ended?100:(1-rem/T.total)*100)+'%';
   const sub = C ? (C.s===C.n-1 ? '마지막 세트 · 끝나면 자동 ✓' : '세트+휴식 · 끝나면 자동 ✓ 후 다음 세트') : '휴식 중';
   $('#tlabel').innerHTML = T.ended ? (C===null&&T.label.endsWith('완료!') ? `<b>${esc(T.label)}</b><br>${NEXT_CID?'다음 운동을 시작하세요':'오늘 운동 끝! 운동 완료를 눌러 주세요'}` : `<b>휴식 끝! 다음 세트 시작</b><br>${esc(T.label)}`) : `<b>${esc(T.label)}</b><br>${T.paused?'일시정지':sub}`;
-  if(!T.paused && !T.warned && rem<=10 && rem>0){ T.warned=true; beep(660,.12,1); }
-  if(!C && !T.paused && !T.ended && rem<=0){ T.ended=true; $('#timer').classList.add('end'); beep(988,.22,3); try{navigator.vibrate&&navigator.vibrate([300,150,300,150,300]);}catch(e){} }
+  if(!T.paused && !T.warned && rem<=10 && rem>0){ T.warned=true; soundWarn(); }
+  if(!C && !T.paused && !T.ended && rem<=0){ T.ended=true; $('#timer').classList.add('end'); soundEnd(); }
 }
 const fmtTime = x => Math.floor(x/60)+':'+String(x%60).padStart(2,'0');
 setInterval(tick,250);
+['pointerdown','touchend','keydown'].forEach(ev=>document.addEventListener(ev,unlockAudio,{passive:true}));
 document.querySelectorAll('#timer [data-t]').forEach(b=>b.addEventListener('click',()=>{
   unlockAudio(); const a=b.dataset.t;
   if(a==='skip') return stopTimer();
@@ -609,13 +623,6 @@ function updateSyncBadge(){
 window.addEventListener('online', flushOutbox);
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) flushOutbox(); });
 
-/* ===== 워치 타이머 연동 ===== */
-function watchTimer(sec){
-  const m=S.settings.watch;
-  if(m==='ios') location.href='shortcuts://run-shortcut?name='+encodeURIComponent(S.settings.shortcutName||'운동타이머')+'&input=text&text='+sec;
-  else if(m==='android') location.href='intent:#Intent;action=android.intent.action.SET_TIMER;i.android.intent.extra.alarm.LENGTH='+sec+';B.android.intent.extra.alarm.SKIP_UI=true;S.android.intent.extra.alarm.MESSAGE='+encodeURIComponent('휴식')+';end';
-}
-
 /* ===== 이벤트 ===== */
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none',2200); }
 function setCur(p,w,d){ S.settings.cur={p,w,d}; S.settings._u=Date.now(); queueRemote('settings'); render(); window.scrollTo({top:0}); }
@@ -627,8 +634,7 @@ $('#view').addEventListener('change',e=>{
   if(t.id==='histSel'){ HIST_K=t.value; return renderHist(); }
   if(t.id==='sdate'){ const s=curSession(true); s.date=t.value; s.updatedAt=Date.now(); return queueRemote('s_'+sKey(c.p,c.w,c.d)); }
   if(t.id==='sUnit'){ if(convertUnits(t.value)){ Object.keys(S.sessions).forEach(k=>queueRemote('s_'+k)); queueRemote('settings'); toast(`단위를 ${t.value}로 바꾸고 기존 기록도 변환했어요`); renderSet(); } return; }
-  if(t.id==='sUrl'||t.id==='sTok'||t.id==='sSc'){ S.settings[{sUrl:'sheetUrl',sTok:'sheetToken',sSc:'shortcutName'}[t.id]]=t.value.trim(); saveLocal(); updateSyncBadge(); toast('저장됨'); return; }
-  if(t.id==='sWatch'){ S.settings.watch=t.value; saveLocal(); toast('저장됨'); return renderSet(); }
+  if(t.id==='sUrl'||t.id==='sTok'){ S.settings[{sUrl:'sheetUrl',sTok:'sheetToken',sSc:'shortcutName'}[t.id]]=t.value.trim(); saveLocal(); updateSyncBadge(); toast('저장됨'); return; }
   const map={sDrop:['drop',Number],sBig:['incBig',Number],sSmall:['incSmall',Number],sAuto:['autoTimer',v=>v==='1'],sSound:['sound',v=>v==='1']};
   if(map[t.id]){ const [k,fn]=map[t.id]; S.settings[k]=fn(t.value); S.settings._u=Date.now(); queueRemote('settings'); toast('저장됨'); }
 });
@@ -665,7 +671,6 @@ $('#view').addEventListener('click',e=>{
     if(S.settings.autoTimer && !C){
       const last = s===ex.sets-1;
       startTimer(+t.dataset.rest, last ? `${ex.name} 끝 → 다음 운동` : `${ex.name} ${s+2}세트 준비`);
-      watchTimer(+t.dataset.rest);
     }
     return;
   }
@@ -676,10 +681,11 @@ $('#view').addEventListener('click',e=>{
   }
   if(t.id==='btnNext') return goNext();
   if(t.id==='bSendAll'){ if(!S.settings.sheetUrl){ toast('먼저 시트 웹앱 URL을 입력하세요'); return; } Object.keys(S.sessions).forEach(k=>{ const pl=buildPayload(k); if(pl&&pl.rows.length){ const o=getOutbox(); o[k]=pl; setOutbox(o); } }); flushOutbox(); toast('전체 기록 전송을 시작했어요'); return; }
-  if(t.id==='bWatchTest'){ return watchTimer(10); }
+  if(t.id==='bSndWarn'){ unlockAudio(); return soundWarn(); }
+  if(t.id==='bSndEnd'){ unlockAudio(); return soundEnd(); }
   if(t.id==='bCopy'){ const txt=JSON.stringify(S); $('#bTxt').value=txt; navigator.clipboard?.writeText(txt).then(()=>toast('백업 코드 복사됨'),()=>toast('아래 칸의 코드를 직접 복사하세요')); return; }
   if(t.id==='bLoad'){
-    try{ const o=JSON.parse($('#bTxt').value); if(!o.sessions) throw 0; const keep={sheetUrl:S.settings.sheetUrl,sheetToken:S.settings.sheetToken,watch:S.settings.watch,shortcutName:S.settings.shortcutName}; S.settings={...DEFAULT_SETTINGS,...o.settings,...keep}; S.sessions=o.sessions;
+    try{ const o=JSON.parse($('#bTxt').value); if(!o.sessions) throw 0; const keep={sheetUrl:S.settings.sheetUrl,sheetToken:S.settings.sheetToken}; S.settings={...DEFAULT_SETTINGS,...o.settings,...keep}; S.sessions=o.sessions;
       Object.keys(S.sessions).forEach(k=>{S.sessions[k].updatedAt=Date.now(); queueRemote('s_'+k);}); queueRemote('settings'); toast('복원 완료'); render(); }catch(err){ toast('백업 코드가 올바르지 않아요'); } return;
   }
   if(t.id==='bReset'){
