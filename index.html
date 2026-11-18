@@ -78,6 +78,8 @@ header h1 span{color:var(--accent)}
 .diff{font-weight:700;margin-left:4px;padding:1px 6px;border-radius:6px;font-size:11.5px}
 .diff.up{color:#06281a;background:var(--up)} .diff.down{color:#fff;background:var(--danger)} .diff.same{color:var(--text);background:var(--panel2)}
 .diff small{font-weight:500;opacity:.85}
+.tot{display:flex;justify-content:space-between;align-items:center;gap:6px;margin:8px 0 2px;padding:7px 10px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+.tot b{color:var(--text);font-size:13.5px}
 .row.done .fld input{border-color:#2b5a45}
 .finish{display:flex;gap:8px;margin-top:18px}
 .finish .btn{flex:1;padding:13px;font-size:15px}
@@ -371,6 +373,8 @@ function cardHTML(ex,b,idx,sess,cid){
   let h=`<div class="card" data-cid="${cid}" data-k="${k}">
     <div class="exh"><b>${esc(ex.name)}</b><span class="r"><span class="muted">${ex.sets}세트 · 목표 ${b.target}개</span><button class="btn go ${chainOn(cid)?'on':''}" data-go="${cid}">${chainOn(cid)?'⏹ 정지':`▶ 시작 ${b.rest}초×${ex.sets}`}</button></span></div>
     <div class="rec ${rec.type}">${rec.type==='new'?'🔎':rec.type==='up'?'⬆':rec.type==='phase'?'🔄':'➡'} 1세트 추천 <b>${rec.title}</b><small>${rec.msg}</small></div>`;
+  { const tr=[]; for(let s=0;s<ex.sets;s++){ const c=cur[s]||{}, pv=prevSets[s]; tr.push({w:c.w??'', r:c.r??'', pw:pv&&pv.r>0?(+pv.w||0):'', pr:pv&&pv.r>0?+pv.r:''}); }
+    const t=totHTML(tr); h+=`<div class="tot" ${t?'':'style="display:none"'}>${t}</div>`; }
   for(let s=0;s<ex.sets;s++){
     const c=cur[s]||{}, pv=prevSets[s];
     const pw = s===0 && rec.w1!=null ? fmt(rec.w1) : '';   // 추천은 1세트만 (지난주 기록 기반)
@@ -402,6 +406,25 @@ function diffHTML(w,r,pv){
   }
   return `<span class="diff ${d>0?'up':d<0?'down':'same'}">${txt}</span>`;
 }
+/* 종목 전체 볼륨: 오늘 입력한 세트와 지난주 같은 세트끼리 비교 */
+function totHTML(rows){ // rows: [{w,r,pw,pr}]
+  let cv=0, pv=0, n=0, cr=0, prr=0, any=false, bw=true;
+  rows.forEach(x=>{
+    if(!(+x.r>0)) return;
+    const w = (x.w===''||x.w==null) ? (+x.pw||0) : +x.w;
+    cv += w*(+x.r); cr += +x.r; any=true; if(w>0) bw=false;
+    if(+x.pr>0){ pv += (+x.pw||0)*(+x.pr); prr += +x.pr; n++; if(+x.pw>0) bw=false; }
+  });
+  const hasPrev = rows.some(x=>+x.pr>0);
+  if(!any) return hasPrev ? `<span>지난주 종목 볼륨 <b>${fmt(rows.reduce((a,x)=>a+(+x.pw||0)*(+x.pr||0),0))}${unit()}</b></span><span>입력하면 비교돼요</span>` : '';
+  const done=rows.filter(x=>+x.r>0).length, partial = done<rows.length ? ` · ${done}/${rows.length}세트 기준` : '';
+  if(bw){ const d=cr-prr; return `<span>종목 합계 <b>${cr}개</b>${partial}</span>${n?`<span class="diff ${d>0?'up':d<0?'down':'same'}">${d>0?'▲ +'+d+'개':d<0?'▼ '+d+'개':'= 동일'}</span>`:''}`; }
+  const left = `<span>종목 볼륨 <b>${fmt(cv)}${unit()}</b>${partial}</span>`;
+  if(!n) return left+'<span>지난주 기록 없음</span>';
+  const d=Math.round((cv-pv)*10)/10, pct=pv>0?Math.round(d/pv*100):null, sg=d>0?'+':'';
+  return left+`<span class="diff ${d>0?'up':d<0?'down':'same'}">${d? `${d>0?'▲':'▼'} ${sg}${fmt(d)}${unit()}${pct!==null?` <small>(${sg}${pct}%)</small>`:''}` : '= 동일'}</span>`;
+}
+function rowsFromCard(card){ return [...card.querySelectorAll('.row')].map(r=>({w:r.querySelector('[data-f=w]').value, r:r.querySelector('[data-f=r]').value, pw:r.dataset.pw, pr:r.dataset.pr})); }
 function findEx(cid){ const [bi,ei]=cid.split('_').map(Number); const {p,d}=S.settings.cur; const b=PH[p].days[d].blocks[bi]; return {b, ex:b.ex[ei]}; }
 function setVal(card, s, f, v){
   const sess=curSession(true), {b,ex}=findEx(card.dataset.cid), k=card.dataset.k;
@@ -447,7 +470,7 @@ function renderRules(){
   <div class="note"><b>⬆ 증량</b> 지난 기록의 1세트가 목표 횟수 이상이면 다음 1세트를 증량합니다. 기본 +${S.settings.incBig}${u}(바벨류) / +${S.settings.incSmall}${u}(덤벨·케이블·머신). 목표보다 많이 넘겼으면(추정 1RM 기준) 2단계까지 올려요.</div>
   <div class="note"><b>➡ 유지</b> 목표 미달이면 같은 무게로 지난번 +1개를 목표로 합니다.</div>
   <div class="note"><b>🔄 주기 변경</b> 새 주기에서 목표 횟수가 바뀌면(예: 6→8개) 직전 기록을 추정 1RM(Epley 공식)으로 환산해 시작 무게를 제안합니다.</div>
-  <div class="note"><b>▲▼ 표시</b> 세트마다 지난주 같은 세트와 볼륨(무게×횟수)을 비교해요. 맨몸 운동은 횟수로 비교해요.</div>
+  <div class="note"><b>▲▼ 표시</b> 세트마다, 그리고 운동 카드 위에서 종목 전체로 지난주와 볼륨(무게×횟수)을 비교해요. 종목 합계는 오늘 입력한 세트와 지난주 같은 세트끼리 비교해요. 맨몸 운동은 횟수로 비교해요.</div>
   <div class="note"><b>2·3세트</b> 추천 없이 직접 정해요. 시트 규칙대로 1세트에서 약 5~10% 줄인 무게로 최대 횟수를 하고, 참고용으로 지난주 같은 세트 기록만 보여줍니다.</div>
   <div class="note"><b>⏱ 세트 타이머</b> 운동 카드의 ▶ 시작을 누르면 1세트 타이머(세트+휴식)가 시작돼요. 시간이 끝나면 그 세트가 자동으로 ✓ 되고 다음 세트 타이머가 바로 이어져요. 마지막 세트가 끝나면 다음 운동 버튼이 나타나요. 10초 전 알림음, 세트 전환 시 알림음이 울려요.</div>`;
 }
@@ -662,6 +685,7 @@ $('#view').addEventListener('input',e=>{
   setVal(card,s,t.dataset.f,v);
   if(t.dataset.f==='r' && v>0) t.classList.remove('need');
   const slot=row.querySelector('.dslot');
+  const tot=card.querySelector('.tot'); if(tot){ const t=totHTML(rowsFromCard(card)); tot.innerHTML=t; tot.style.display=t?'':'none'; }
   if(slot && row.dataset.pr){ slot.innerHTML=diffHTML(row.querySelector('[data-f=w]').value, row.querySelector('[data-f=r]').value, {w:+row.dataset.pw, r:+row.dataset.pr}); }
 });
 $('#view').addEventListener('click',e=>{
