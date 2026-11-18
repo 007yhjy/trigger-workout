@@ -75,6 +75,9 @@ header h1 span{color:var(--accent)}
 .chk{height:42px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font-size:18px;font-weight:900}
 .chk.done{background:var(--up);border-color:var(--up);color:#06281a}
 .prev{grid-column:2 / 5;font-size:11.5px;color:var(--muted);margin-top:-3px}
+.diff{font-weight:700;margin-left:4px;padding:1px 6px;border-radius:6px;font-size:11.5px}
+.diff.up{color:#06281a;background:var(--up)} .diff.down{color:#fff;background:var(--danger)} .diff.same{color:var(--text);background:var(--panel2)}
+.diff small{font-weight:500;opacity:.85}
 .row.done .fld input{border-color:#2b5a45}
 .finish{display:flex;gap:8px;margin-top:18px}
 .finish .btn{flex:1;padding:13px;font-size:15px}
@@ -374,15 +377,25 @@ function cardHTML(ex,b,idx,sess,cid){
     const pr = s===0 ? rec.r1 : '최대';
     const prevTxt = pv && pv.r ? `지난번 ${fmt(+pv.w||0)}${u}×${pv.r}` : '';
     const goalTxt = '';
-    h+=`<div class="row ${c.done?'done':''} ${chainOn(cid)&&C.s===s?'cur':''}" data-s="${s}">
+    const pvAttr = pv && pv.r>0 ? `data-pw="${+pv.w||0}" data-pr="${+pv.r}"` : '';
+    h+=`<div class="row ${c.done?'done':''} ${chainOn(cid)&&C.s===s?'cur':''}" data-s="${s}" ${pvAttr}>
       <div class="sl">${s+1}</div>
       <div class="fld"><input inputmode="decimal" data-f="w" value="${c.w??''}" placeholder="${pw}"><span>${u}</span></div>
       <div class="fld"><input inputmode="numeric" data-f="r" class="${c.done&&!(c.r>0)?'need':''}" value="${c.r??''}" placeholder="${pr}"><span>개</span></div>
       <button class="chk ${c.done?'done':''}" data-chk="1" data-rest="${b.rest}">✓</button>
-      ${(prevTxt||goalTxt)?`<div class="prev">${[prevTxt,goalTxt].filter(Boolean).join(' · ')}</div>`:''}
+      ${prevTxt?`<div class="prev">${prevTxt}<span class="dslot">${diffHTML(c.w,c.r,pv)}</span></div>`:''}
     </div>`;
   }
   return h+`</div>`;
+}
+/* 지난주 같은 세트 대비 횟수 ▲▼ (무게가 다르면 함께 표시) */
+function diffHTML(w,r,pv){
+  if(!pv || !(+pv.r>0) || !(+r>0)) return '';
+  const dr=+r-(+pv.r), dw=(w===''||w==null?+pv.w||0:+w)-(+pv.w||0);
+  const cls = dr>0?'up':dr<0?'down':'same';
+  const txt = dr>0?`▲ +${dr}개`:dr<0?`▼ ${dr}개`:'= 동일';
+  const wTxt = dw? ` <small>(무게 ${dw>0?'+':''}${fmt(dw)}${unit()})</small>` : '';
+  return `<span class="diff ${cls}">${txt}${wTxt}</span>`;
 }
 function findEx(cid){ const [bi,ei]=cid.split('_').map(Number); const {p,d}=S.settings.cur; const b=PH[p].days[d].blocks[bi]; return {b, ex:b.ex[ei]}; }
 function setVal(card, s, f, v){
@@ -642,6 +655,8 @@ $('#view').addEventListener('input',e=>{
   const v = t.value==='' ? '' : Number(t.value);
   setVal(card,s,t.dataset.f,v);
   if(t.dataset.f==='r' && v>0) t.classList.remove('need');
+  const slot=row.querySelector('.dslot');
+  if(slot && row.dataset.pr){ slot.innerHTML=diffHTML(row.querySelector('[data-f=w]').value, row.querySelector('[data-f=r]').value, {w:+row.dataset.pw, r:+row.dataset.pr}); }
 });
 $('#view').addEventListener('click',e=>{
   const t=e.target.closest('button'); if(!t) return; unlockAudio();
